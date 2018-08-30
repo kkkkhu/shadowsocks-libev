@@ -1,5 +1,5 @@
 #!/bin/sh
-# Copyright 2017 Roger Shimizu <rogershimizu@gmail.com>
+# Copyright 2017-2018 Roger Shimizu <rosh@debian.org>
 #
 # This is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -65,6 +65,8 @@ apt_init() {
 			sudo sh -c "printf \"\\ndeb $REPO ${OSVER}-backports-sloppy main\" >> /etc/apt/sources.list.d/${OSVER}-backports.list"
 		sudo apt-get update
 		sudo apt-get install --no-install-recommends -y -t $BPO $DEPS_BPO
+		[ -n "$DEPS_EXTRA" -a "$DEPS_EXTRA" = "sloppy" ] &&
+			sudo apt-get install --no-install-recommends -y -t ${BPO}-sloppy $DEPS_BPO
 	else
 		sudo apt-get update
 	fi
@@ -178,7 +180,7 @@ build_install_libmbedtls() {
 if [ $BUILD_LIB -eq 1 -o $BUILD_BIN -eq 1 ]; then
 	BRANCH=$1
 	if [ $BUILD_LIB -eq 1 ]; then
-		gbp_build https://anonscm.debian.org/git/collab-maint/mbedtls.git $BRANCH
+		gbp_build https://salsa.debian.org/debian/mbedtls.git $BRANCH
 	else
 		ls libmbed*.deb 2>&1 > /dev/null ||
 			help_lib libmbedtls
@@ -193,14 +195,22 @@ if [ $BUILD_LIB -eq 1 -o $BUILD_BIN -eq 1 ]; then
 	if [ $BUILD_LIB -eq 1 ]; then
 		git clone https://github.com/gcsideal/debian-libsodium.git libsodium
 		cd libsodium; LIBSODIUM=$(dpkg-parsechangelog --show-field Version); cd -
-		dget -ud http://deb.debian.org/debian/pool/main/libs/libsodium/libsodium_${LIBSODIUM}.dsc
+		dget -ud https://deb.debian.org/debian/pool/main/libs/libsodium/libsodium_${LIBSODIUM}.dsc
 		DHVER=$(dpkg -l debhelper|grep debhelper|awk '{print $3}'|head -n1)
 		cd libsodium
 		if dpkg --compare-versions $DHVER lt 10; then
+			sed -i 's/debhelper ( >= 11)/debhelper (>= 9), dh-autoreconf/' debian/control;
 			sed -i 's/debhelper ( >= 10)/debhelper (>= 9), dh-autoreconf/' debian/control;
 			echo 9 > debian/compat;
+			dch -D unstable -l~bpo~ "Rebuild as backports"
 			git add -u;
-			git commit -m "Patch to work with ubuntu trusty (14.04)"
+			git commit -m "Patch to work with ubuntu"
+		elif dpkg --compare-versions $DHVER lt 11; then
+			sed -i 's/debhelper ( >= 11)/debhelper (>= 10)/' debian/control;
+			echo 10 > debian/compat;
+			dch -D unstable -l~bpo~ "Rebuild as backports"
+			git add -u;
+			git commit -m "Patch to work with ubuntu"
 		fi
 		mk-build-deps --root-cmd sudo --install --tool "apt-get -o Debug::pkgProblemResolver=yes --no-install-recommends -y"
 		rm libsodium-build-deps_*.deb
@@ -219,7 +229,7 @@ build_install_libbloom() {
 if [ $BUILD_LIB -eq 1 -o $BUILD_BIN -eq 1 ]; then
 	BRANCH=$1
 	if [ $BUILD_LIB -eq 1 ]; then
-		gbp_build https://anonscm.debian.org/git/collab-maint/libbloom.git $BRANCH
+		gbp_build https://salsa.debian.org/bridges-team/libbloom.git $BRANCH
 	else
 		ls libbloom-dev_*.deb libbloom1_*.deb 2>&1 > /dev/null ||
 			help_lib "libbloom-dev libbloom1"
@@ -232,12 +242,13 @@ fi
 patch_sslibev_dh9() {
 if [ $BUILD_BIN -eq 1 ]; then
 	BRANCH=$1
-	gbp clone --pristine-tar https://anonscm.debian.org/git/collab-maint/shadowsocks-libev.git
+	gbp clone --pristine-tar https://salsa.debian.org/bridges-team/shadowsocks-libev.git
 	cd shadowsocks-libev
 	[ -n "$BRANCH" ] && git checkout $BRANCH
 	sed -i 's/dh $@/dh $@ --with systemd,autoreconf/' debian/rules
 	sed -i 's/debhelper (>= 10)/debhelper (>= 9), dh-systemd, dh-autoreconf/' debian/control
 	echo 9 > debian/compat
+	dch -D unstable -l~bpo~ "Rebuild as backports"
 	git add -u
 	git commit -m "Patch to work with ubuntu trusty (14.04)"
 	cd -
@@ -248,7 +259,7 @@ fi
 build_install_sslibev() {
 if [ $BUILD_BIN -eq 1 ]; then
 	BRANCH=$1
-	gbp_build https://anonscm.debian.org/git/collab-maint/shadowsocks-libev.git $BRANCH
+	gbp_build https://salsa.debian.org/bridges-team/shadowsocks-libev.git $BRANCH
 	sudo dpkg -i shadowsocks-libev_*.deb
 	sudo apt-get install -fy
 fi
@@ -258,7 +269,7 @@ fi
 build_install_simpleobfs() {
 if [ $BUILD_BIN -eq 1 ]; then
 	BRANCH=$1
-	git_build https://anonscm.debian.org/git/collab-maint/simple-obfs.git $BRANCH
+	git_build https://salsa.debian.org/bridges-team/simple-obfs.git $BRANCH
 	sudo dpkg -i simple-obfs_*.deb
 	sudo apt-get install -fy
 fi
@@ -268,7 +279,7 @@ fi
 build_install_dhgolang() {
 if [ $BUILD_KCP -eq 1 ]; then
 	BRANCH=$1
-	gbp_build https://anonscm.debian.org/cgit/pkg-go/packages/dh-golang.git $BRANCH
+	gbp_build https://salsa.debian.org/go-team/packages/dh-golang.git $BRANCH
 	sudo dpkg -i dh-golang_*.deb
 	sudo apt-get install -fy
 fi
@@ -278,7 +289,7 @@ fi
 build_install_reedsolomondev() {
 if [ $BUILD_KCP -eq 1 ]; then
 	BRANCH=$1
-	gbp_build https://anonscm.debian.org/git/pkg-go/packages/golang-github-klauspost-reedsolomon.git $BRANCH
+	gbp_build https://salsa.debian.org/go-team/packages/golang-github-klauspost-reedsolomon.git $BRANCH
 	sudo dpkg -i golang-github-klauspost-reedsolomon-dev_*.deb
 	sudo apt-get install -fy
 fi
@@ -288,7 +299,7 @@ fi
 build_install_errorsdev() {
 if [ $BUILD_KCP -eq 1 ]; then
 	BRANCH=$1
-	gbp_build https://anonscm.debian.org/git/pkg-go/packages/golang-github-pkg-errors.git $BRANCH
+	gbp_build https://salsa.debian.org/go-team/packages/golang-github-pkg-errors.git $BRANCH
 	sudo dpkg -i golang-github-pkg-errors-dev_*.deb
 	sudo apt-get install -fy
 fi
@@ -298,10 +309,11 @@ fi
 patch_urfaveclidev_xenial() {
 if [ $BUILD_KCP -eq 1 ]; then
 	BRANCH=$1
-	gbp clone --pristine-tar https://anonscm.debian.org/git/pkg-go/packages/golang-github-urfave-cli.git
+	gbp clone --pristine-tar https://salsa.debian.org/go-team/packages/golang-github-urfave-cli.git
 	cd golang-github-urfave-cli
 	[ -n "$BRANCH" ] && git checkout $BRANCH
 	sed -i 's/golang-github-burntsushi-toml-dev/golang-toml-dev/; s/golang-gopkg-yaml.v2-dev/golang-yaml.v2-dev/' debian/control
+	dch -D unstable -l~bpo~ "Rebuild as backports"
 	git add -u
 	git commit -m "Patch to work with ubuntu xenial (16.04)"
 	cd -
@@ -312,7 +324,7 @@ fi
 build_install_urfaveclidev() {
 if [ $BUILD_KCP -eq 1 ]; then
 	BRANCH=$1
-	gbp_build https://anonscm.debian.org/git/pkg-go/packages/golang-github-urfave-cli.git $BRANCH
+	gbp_build https://salsa.debian.org/go-team/packages/golang-github-urfave-cli.git $BRANCH
 	sudo dpkg -i build-area/golang-github-urfave-cli-dev_*.deb
 	sudo apt-get install -fy
 fi
@@ -322,7 +334,7 @@ fi
 build_install_snappydev() {
 if [ $BUILD_KCP -eq 1 ]; then
 	BRANCH=$1
-	gbp_build https://anonscm.debian.org/git/pkg-go/packages/golang-github-golang-snappy.git $BRANCH
+	gbp_build https://salsa.debian.org/go-team/packages/golang-github-golang-snappy.git $BRANCH
 	sudo dpkg -i golang-github-golang-snappy-dev_*.deb
 	sudo apt-get install -fy
 fi
@@ -332,7 +344,7 @@ fi
 build_install_kcpdev() {
 if [ $BUILD_KCP -eq 1 ]; then
 	BRANCH=$1
-	gbp_build https://anonscm.debian.org/git/pkg-go/packages/golang-github-xtaci-kcp.git $BRANCH
+	gbp_build https://salsa.debian.org/go-team/packages/golang-github-xtaci-kcp.git $BRANCH
 	sudo dpkg -i golang-github-xtaci-kcp-dev_*.deb
 	sudo apt-get install -fy
 fi
@@ -342,7 +354,7 @@ fi
 build_install_smuxdev() {
 if [ $BUILD_KCP -eq 1 ]; then
 	BRANCH=$1
-	gbp_build https://anonscm.debian.org/git/pkg-go/packages/golang-github-xtaci-smux.git $BRANCH
+	gbp_build https://salsa.debian.org/go-team/packages/golang-github-xtaci-smux.git $BRANCH
 	sudo dpkg -i golang-github-xtaci-smux-dev_*.deb
 	sudo apt-get install -fy
 fi
@@ -352,7 +364,7 @@ fi
 build_install_kcptun() {
 if [ $BUILD_KCP -eq 1 ]; then
 	BRANCH=$1
-	gbp_build https://anonscm.debian.org/git/pkg-go/packages/kcptun.git $BRANCH
+	gbp_build https://salsa.debian.org/go-team/packages/kcptun.git $BRANCH
 	sudo dpkg -i kcptun_*.deb
 	sudo apt-get install -fy
 fi
@@ -393,7 +405,7 @@ esac
 
 case "$OSVER" in
 jessie)
-	BPO="debhelper libbloom-dev"
+	BPO="debhelper libbloom-dev libsodium-dev"
 	BPOEXTRA=sloppy
 	;;
 stretch)
@@ -439,12 +451,13 @@ esac
 wheezy|precise)
 	echo Sorry, your system $OSID/$OSVER is not supported.
 	;;
-buster|testing|unstable|sid)
+jessie|stretch|buster|testing|unstable|sid)
 	build_install_sslibev
 	;;
-jessie|stretch)
-	build_install_libsodium
+artful|bionic)
+	build_install_libbloom
 	build_install_sslibev
+	build_install_simpleobfs
 	;;
 zesty)
 	build_install_libsodium
